@@ -14,18 +14,14 @@ use_vpn="${USE_VPN:-false}"
 
 if [ "$use_vpn" = true ]; then
     # WireGuard VPN setup
-    if [ -z "$VPN_PRIVATE_KEY" ] || [ -z "$VPN_PUBLIC_KEY" ] || [ -z "$VPN_ENDPOINT" ]; then
-        >&2 echo "Set VPN_PRIVATE_KEY, VPN_PUBLIC_KEY, and VPN_ENDPOINT environment variables"
+    if [ -z "$VPN_CONFIG" ]; then
+        >&2 echo "Set VPN_CONFIG environment variables"
         exit 1
     fi
 
     mkdir -p /etc/wireguard
-    echo "$VPN_PRIVATE_KEY" > /etc/wireguard/privatekey
-    echo "$VPN_PUBLIC_KEY" > /etc/wireguard/publickey
-    echo "[Interface]
-    PrivateKey = $(cat /etc/wireguard/privatekey)
-    Address = 10.0.0.1/24
-    ListenPort = 51820" > /etc/wireguard/wg0.conf
+    
+    echo "$VPN_CONFIG" > /etc/wireguard/wg0.conf
 
     # Start the WireGuard VPN
     wg-quick up wg0
