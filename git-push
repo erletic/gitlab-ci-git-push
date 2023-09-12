@@ -4,19 +4,45 @@ url=$1
 branch=$2
 
 if [ -z "$SSH_PRIVATE_KEY" ]; then
-	>&2 echo "Set SSH_PRIVATE_KEY environment variable"
-	exit 1
+    >&2 echo "Set SSH_PRIVATE_KEY environment variable"
+    exit 1
+fi
+
+# Set use_vpn based on the USE_VPN environment variable.
+# If USE_VPN is not set or is not equal to "true", use_vpn will be set to "false".
+use_vpn="${USE_VPN:-false}"
+
+if [ "$use_vpn" = true ]; then
+    # WireGuard VPN setup
+    if [ -z "$VPN_PRIVATE_KEY" ] || [ -z "$VPN_PUBLIC_KEY" ] || [ -z "$VPN_ENDPOINT" ]; then
+        >&2 echo "Set VPN_PRIVATE_KEY, VPN_PUBLIC_KEY, and VPN_ENDPOINT environment variables"
+        exit 1
+    fi
+
+    mkdir -p /etc/wireguard
+    echo "$VPN_PRIVATE_KEY" > /etc/wireguard/privatekey
+    echo "$VPN_PUBLIC_KEY" > /etc/wireguard/publickey
+    echo "[Interface]
+    PrivateKey = $(cat /etc/wireguard/privatekey)
+    Address = 10.0.0.1/24
+    ListenPort = 51820" > /etc/wireguard/wg0.conf
+
+    # Start the WireGuard VPN
+    wg-quick up wg0
+
+    # Wait for the VPN connection to be established (you can adjust the sleep duration)
+    sleep 5
 fi
 
 ssh_host=$(echo $url | sed 's/.*@//' | sed 's/[:/].*//')
 if [ -z "$ssh_host" ]; then
-	>&2 echo "Usage: $0 <user@git.host:project | ssh://user@git.host:port/project> [<branch>]"
-	exit 1
+    >&2 echo "Usage: $0 <user@git.host:project | ssh://user@git.host:port/project> [<branch>]"
+    exit 1
 fi
 
 ssh_port=
 if [[ $url =~ ^ssh://[^/]+:([0-9]+) ]]; then
-        ssh_port="-p ${BASH_REMATCH[1]}"
+    ssh_port="-p ${BASH_REMATCH[1]}"
 fi
 
 # TODO: skip on multiple runs
@@ -26,3 +52,8 @@ chmod 600 ~/.ssh/id_rsa
 ssh-keyscan -H $ssh_port "$ssh_host" >> ~/.ssh/known_hosts
 
 git push $url ${CI_COMMIT_SHA:-HEAD}:refs/heads/${branch:-master} $([ -z "$DISABLE_FORCE_PUSH" ] && echo --force)
+
+# Stop the WireGuard VPN after pushing (optional)
+if [ "$use_vpn" = true ]; then
+    wg-quick down wg0
+fi
